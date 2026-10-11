@@ -1,0 +1,60 @@
+# Sentinella iPhone 18 Pro Max 512GB nero - Apple Nave de Vero (v1.0.0)
+# Posizione nel repository: .github/workflows/sentinella.yml
+# Richiede il secret NTFY_TOPIC (Settings > Secrets and variables > Actions).
+name: Sentinella iPhone
+
+on:
+  schedule:
+    # Ogni 5 minuti (minimo consentito da GitHub), sfalsato rispetto all'inizio dell'ora.
+    # Repository privato: sostituire con "*/30 * * * *" per restare nei minuti gratuiti.
+    - cron: "2-59/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Invia una notifica di prova con lo stato attuale"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sentinella
+  cancel-in-progress: false
+
+jobs:
+  controllo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Scarica lo script
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Recupera lo stato precedente
+        uses: actions/cache/restore@v6
+        with:
+          path: .stato-sentinella.json
+          key: stato-sentinella-${{ github.run_id }}
+          restore-keys: stato-sentinella-
+
+      - name: Controlla la disponibilita
+        id: controllo
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          MODALITA_TEST: ${{ github.event_name == 'workflow_dispatch' && inputs.test }}
+        run: |
+          if [ "$MODALITA_TEST" = "true" ]; then
+            python3 sentinella.py --test
+          else
+            python3 sentinella.py
+          fi
+
+      - name: Salva lo stato
+        if: always() && steps.controllo.outputs.stato_modificato == 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .stato-sentinella.json
+          key: stato-sentinella-${{ github.run_id }}-${{ github.run_attempt }}
