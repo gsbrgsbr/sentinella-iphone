@@ -1,0 +1,38 @@
+# Inoltro notifiche della sentinella iPhone (v1.0.0, 15/10/2026)
+# Posizione nel repository: .github/workflows/inoltro.yml
+# Avviato dalla sentinella su Google Apps Script quando ntfy rifiuta l'invio diretto.
+# Pubblica sempre e solo sul topic salvato nel secret NTFY_TOPIC.
+name: Inoltro notifiche
+
+on:
+  workflow_dispatch:
+    inputs:
+      notifica:
+        description: "Notifica in formato JSON, preparata dalla sentinella"
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  inoltra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Pubblica la notifica su ntfy
+        env:
+          NOTIFICA: ${{ inputs.notifica }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          corpo="$(jq -c --arg topic "$NTFY_TOPIC" '.topic = $topic' <<< "$NOTIFICA")"
+          for tentativo in 1 2 3; do
+            codice="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+              --data-binary "$corpo" https://ntfy.sh/ || true)"
+            if [ "$codice" = "200" ]; then
+              echo "Notifica inoltrata a ntfy."
+              exit 0
+            fi
+            echo "Tentativo $tentativo non riuscito: HTTP $codice"
+            sleep 10
+          done
+          exit 1
